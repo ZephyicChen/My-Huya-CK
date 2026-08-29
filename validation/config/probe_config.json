@@ -1,0 +1,11 @@
+{
+  "schema_version": "2.0",
+  "page_stabilize_wait_seconds": 8,
+  "selectors": {
+    "danmaku_input": "TODO: 弹幕输入框 selector，需登录后在真实页面确认",
+    "danmaku_send_button": "#msg_send_bt"
+  },
+  "log": {
+    "flush_on_write": true
+  }
+}

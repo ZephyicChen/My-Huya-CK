@@ -1,0 +1,198 @@
+:root {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #1a1a1a;
+  background: #f4f1ea;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sub,
+.hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.ok {
+  color: #1b6b3a;
+}
+
+.err {
+  color: #a32020;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e0d9cc;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 16px 0;
+}
+
+.panel header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.feature-grid > .panel {
+  margin: 0;
+}
+
+.feature-group,
+.feature-wide {
+  grid-column: 1 / -1;
+}
+
+.feature-group-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-subpanel {
+  min-width: 0;
+  padding: 14px 0 6px;
+  border-top: 1px solid #ece6dc;
+}
+
+.feature-subpanel:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+
+.feature-subpanel header {
+  margin-bottom: 8px;
+}
+
+.field {
+  margin: 10px 0;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.field input[type="text"],
+.field input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.badge {
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e8e4dc;
+  color: #555;
+  white-space: nowrap;
+}
+
+.badge.on {
+  background: #d4edda;
+  color: #1b6b3a;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.actions button {
+  padding: 8px 14px;
+  font: inherit;
+  border: 1px solid #c8c1b4;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.actions button.primary {
+  background: #2c5aa0;
+  color: #fff;
+  border-color: #2c5aa0;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: 16px 10px 32px;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .top {
+    align-items: center;
+  }
+}
+
+@media (max-width: 800px) {
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

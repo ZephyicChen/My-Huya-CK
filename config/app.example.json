@@ -1,0 +1,33 @@
+{
+  "room": "",
+  "show_browser": false,
+  "welcome": {
+    "enabled": false,
+    "min_noble_level": 2,
+    "min_consume_level": 0,
+    "template": "欢迎{guard_prefix|noble_prefix}{nick}哥进入直播间~"
+  },
+  "gift_thank": {
+    "enabled": false,
+    "min_value_fen": 600,
+    "min_unit_value_fen": 0,
+    "template": "感谢{nick}送的{count}个{item_name}"
+  },
+  "guard_thank": {
+    "enabled": false,
+    "template": "感谢{nick}为主播{action}{guard_name}!"
+  },
+  "superfan_thank": {
+    "enabled": false,
+    "template": "感谢{nick}为主播开通{superfan_name}!"
+  },
+  "noble_thank": {
+    "enabled": false,
+    "template": "感谢{nick}为主播{action}{noble_name}{months}个月!"
+  },
+  "danmaku": {
+    "enabled": false,
+    "interval_ms": 3000,
+    "queue_max": 20
+  }
+}

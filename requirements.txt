@@ -1,0 +1,6 @@
+# Python 3.10+
+# Chromium 由 ensure_env.py 下载到 .playwright-browsers/
+playwright>=1.55.0,<2
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.32.0,<1
+httpx>=0.27.0,<1

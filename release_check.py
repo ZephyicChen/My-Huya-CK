@@ -13,6 +13,7 @@ WEB_INDEX = ROOT / "web" / "index.html"
 WEB_ASSETS = ROOT / "web" / "assets"
 SENSITIVE_PREFIXES = (
     "config/app.json",
+    "data/",
     "logs/",
     "playwright-profile/",
     "validation/event-captures/",
@@ -67,10 +68,21 @@ def main() -> int:
 
     if config.get("room"):
         errors.append("config/app.example.json 的 room 必须为空")
+    chat_control = config.get("chat_control")
+    if not isinstance(chat_control, dict):
+        errors.append("config/app.example.json 必须包含空的 chat_control")
+    elif chat_control.get("owner_uid") or chat_control.get("owner_nick") or chat_control.get("whitelist"):
+        errors.append("config/app.example.json 的当前账号和白名单必须为空")
     for feature_id in ("welcome", "gift_thank", "superfan_thank", "noble_thank", "guard_thank", "danmaku"):
         feature = config.get(feature_id)
         if not isinstance(feature, dict) or feature.get("enabled") is not False:
             errors.append(f"config/app.example.json 的 {feature_id}.enabled 必须为 false")
+    interaction = config.get("interaction")
+    if not isinstance(interaction, dict) or interaction.get("enabled") is not False:
+        errors.append("config/app.example.json 必须包含 interaction.enabled=false")
+    novel = config.get("novel")
+    if not isinstance(novel, dict) or novel.get("enabled") is not False or novel.get("novel_id"):
+        errors.append("config/app.example.json 必须包含未启用且未选择小说的 novel 段")
 
     tracked = git("ls-files")
     if tracked.returncode != 0:

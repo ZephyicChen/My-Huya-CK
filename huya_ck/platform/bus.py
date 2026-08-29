@@ -9,6 +9,8 @@ from huya_ck.features.danmaku.handler import danmaku
 from huya_ck.features.gift_thank.handler import consider as consider_gift
 from huya_ck.features.guard_thank.handler import consider as consider_guard
 from huya_ck.features.noble_thank.handler import consider as consider_noble
+from huya_ck.features.novel.handler import execute as execute_novel
+from huya_ck.features.remote_control.handler import execute as execute_remote_control
 from huya_ck.features.superfan_thank.handler import consider as consider_superfan
 from huya_ck.features.welcome.handler import consider as consider_welcome
 from huya_ck.log import get_logger
@@ -32,7 +34,12 @@ def event_id_for(event: dict) -> str:
     if event.get("type") == "gift" and event.get("order_id"):
         detail = f"order:{event.get('order_id')}"
     else:
-        detail = event.get("item_name") or event.get("banner_text")
+        detail = (
+            event.get("message_id")
+            or event.get("item_name")
+            or event.get("banner_text")
+            or event.get("content")
+        )
     raw = f"{event.get('uri')}|{event.get('uid') or event.get('sender_uid')}|{event.get('nick') or event.get('sender_nick')}|{detail}"
     return hashlib.sha1(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
 
@@ -51,6 +58,16 @@ def emit(event: dict) -> None:
     _seen.add(eid)
 
     kind = event.get("type")
+    if kind == "chat_message":
+        try:
+            execute_remote_control(event, danmaku)
+        except Exception:
+            log.exception("远程场控指令处理失败")
+        try:
+            execute_novel(event, danmaku)
+        except Exception:
+            log.exception("小说指令处理失败")
+        return
     handler = _HANDLERS.get(kind)
     if handler is None:
         return

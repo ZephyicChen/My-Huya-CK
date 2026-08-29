@@ -1,4 +1,4 @@
-"""接入虎牙网页自身的 TAF 1001/6110/6501/6540/10079/2001231 订阅。
+"""接入虎牙网页自身的 TAF 业务订阅，包括 1400 弹幕消息。
 
 部分直播间的消息连接由网页 SDK/Worker 持有，Playwright 的 page websocket
 事件看不到这些帧。网页组件本身通过 TTP.addTafListener 收消息；这里在同一
@@ -7,11 +7,13 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Callable
 
 from huya_ck.log import get_logger
 from huya_ck.platform.bus import emit
 from huya_ck.platform.channel import channel_state
+from huya_ck.platform.chat_state import chat_state
 from huya_ck.platform.taf_decoration import consume_badge_level
 
 log = get_logger()
@@ -294,6 +296,29 @@ OFFICIAL_TAF_BRIDGE_SCRIPT = r"""
       status(`superfan-plus-event-error:${error && error.message ? error.message : String(error)}`);
     }
   };
+  const forwardChat = (event) => {
+    try {
+      window.__huya_ck_on_1400({
+        uid: integerText(deepFirst(event, [
+          "lSenderUid", "lUid", "lUserId", "senderUid", "uid", "userId"
+        ])),
+        nick: text(deepFirst(event, [
+          "sSenderNick", "sNickName", "sUserNick", "sendNick", "senderNick", "nick"
+        ])).trim(),
+        content: text(deepFirst(event, [
+          "sContent", "sMessage", "sMsg", "content", "message"
+        ])).trim(),
+        room_id: integerText(deepFirst(event, ["lRoomId", "lPid", "roomId"])),
+        show_mode: integerText(deepFirst(event, ["iShowMode", "showMode"])),
+        message_id: integerText(deepFirst(event, ["lMsgId", "sMsgId", "messageId", "msgId"])),
+        event_time_ms: String(Date.now()),
+        event_seq: String(window.__huya_ck_chat_seq = (window.__huya_ck_chat_seq || 0) + 1),
+        field_keys: fieldKeys(event),
+      });
+    } catch (error) {
+      status(`chat-event-error:${error && error.message ? error.message : String(error)}`);
+    }
+  };
   const install = () => {
     if (window.__huya_ck_taf_business_attached) return true;
     if (!window.TTP || typeof window.TTP.ready !== "function") return false;
@@ -305,6 +330,7 @@ OFFICIAL_TAF_BRIDGE_SCRIPT = r"""
           signal.addTafListener("6501", forwardGift);
           signal.addTafListener("6540", forwardGuard);
           signal.addTafListener("1001", forwardNoble);
+          signal.addTafListener("1400", forwardChat);
           try {
             signal.addTafListener("10079", forwardSuperFan);
             signal.addTafListener("2001231", forwardSuperFanPlus);
@@ -525,6 +551,38 @@ def normalize_official_10079(payload: Any) -> dict | None:
     return event
 
 
+def normalize_official_1400(payload: Any) -> dict | None:
+    """只接受带有效 UID、昵称和正文的用户弹幕，不把系统通知当成指令。"""
+    if not isinstance(payload, dict):
+        return None
+    uid = _integer(payload.get("uid"))
+    nick = str(payload.get("nick") or "").strip()
+    content = str(payload.get("content") or "").strip()
+    if uid is None or uid <= 0 or not nick or not content:
+        return None
+    if nick in {"系统消息", "虎牙系统", "虎牙直播"}:
+        return None
+    event_time_ms = _integer(payload.get("event_time_ms"))
+    event_seq = _integer(payload.get("event_seq"))
+    message_id = str(payload.get("message_id") or "").strip()
+    event = {
+        "type": "chat_message",
+        "uri": 1400,
+        "uid": uid,
+        "nick": nick,
+        "content": content,
+        "room_id": _integer(payload.get("room_id")),
+        "show_mode": _integer(payload.get("show_mode")),
+        "message_id": message_id,
+        "group": "official-taf",
+    }
+    if message_id:
+        event["event_id"] = f"1400:{message_id}:{uid}"
+    elif event_time_ms is not None:
+        event["event_id"] = f"1400:{event_time_ms}:{event_seq or 0}:{uid}"
+    return event
+
+
 def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = None) -> None:
     """导航前调用；init script 会在直播间页面等待 TTP 就绪并订阅。"""
     if getattr(page, "_huya_ck_official_taf", False):
@@ -532,6 +590,7 @@ def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = Non
     page._huya_ck_official_taf = True
     callback = on_event or emit
     attached_logged = False
+    last_chat_diagnostic = 0.0
     target_room_uids: set[int] = set()
 
     def remember_target_room(value: Any) -> None:
@@ -545,11 +604,12 @@ def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = Non
         if value in {"attached", "heartbeat"}:
             channel_state.mark_connected(_BRIDGE_IDENT)
             channel_state.mark_activity()
+            chat_state.mark_attached()
             if value == "attached" and not attached_logged:
                 attached_logged = True
-                log.info("官方 TAF 业务通道已接入（1001 贵族、6110 进场、6501 礼物、6540 守护、10079/2001231 超粉）")
+                log.info("官方 TAF 业务通道已接入（1400 弹幕及自动场控事件）")
             return
-        log.info("官方 1001/6110/6501/6540/10079/2001231 通道异常：%s", value or "未知")
+        log.info("官方 1400/1001/6110/6501/6540/10079/2001231 通道异常：%s", value or "未知")
 
     def on_6110(payload: Any) -> None:
         channel_state.mark_connected(_BRIDGE_IDENT)
@@ -607,6 +667,34 @@ def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = Non
             event["action"],
             event["guard_name"],
             event["banner_text"],
+        )
+        callback(event)
+
+    def on_1400(payload: Any) -> None:
+        nonlocal last_chat_diagnostic
+        channel_state.mark_connected(_BRIDGE_IDENT)
+        channel_state.mark_activity()
+        chat_state.mark_attached()
+        event = normalize_official_1400(payload)
+        if event is None:
+            now = time.monotonic()
+            if now - last_chat_diagnostic >= 60:
+                last_chat_diagnostic = now
+                keys = payload.get("field_keys", []) if isinstance(payload, dict) else []
+                log.info(
+                    "官方 1400 暂无法识别用户弹幕（仅记录字段名=%s）",
+                    ",".join(map(str, keys)) or "未知",
+                )
+            return
+        is_outbound = chat_state.is_recent_outbound(event["content"])
+        authorization = chat_state.observe(event, is_outbound=is_outbound)
+        if authorization is None:
+            return
+        log.info(
+            "识别授权弹幕 1400（用户=%s，uid=%s，身份=%s）",
+            event["nick"],
+            event["uid"],
+            authorization["role"],
         )
         callback(event)
 
@@ -681,6 +769,7 @@ def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = Non
     page.expose_function("__huya_ck_on_6540", on_6540)
     page.expose_function("__huya_ck_on_1001", on_1001)
     page.expose_function("__huya_ck_on_10079", on_10079)
+    page.expose_function("__huya_ck_on_1400", on_1400)
     page.expose_function("__huya_ck_taf_status", on_status)
     page.add_init_script(script=OFFICIAL_TAF_BRIDGE_SCRIPT)
-    log.debug("诊断：已准备网页官方 1001/6110/6501/6540/10079/2001231 监听，等待直播间 TTP 通道就绪")
+    log.debug("诊断：已准备网页官方 1400 及自动场控事件监听，等待直播间 TTP 通道就绪")

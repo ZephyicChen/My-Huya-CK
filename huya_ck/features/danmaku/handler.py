@@ -9,11 +9,15 @@ from typing import Any
 
 from huya_ck.log import get_logger
 from huya_ck.platform import config_store
+from huya_ck.platform.chat_state import chat_state
 
 log = get_logger()
 
 INPUT_SELECTORS = ("#pub_msg_input", "input[name='msg']", "textarea.chat-input")
 SEND_SELECTORS = ("#msg_send_bt", "a.chat-send", "button.chat-send")
+
+# 虎牙弹幕输入框 30 字上限；留 2 字余量，超长拒绝入队（不做截断，截断的欢迎语更难看）
+MAX_TEXT_CHARS = 28
 
 
 def _find_visible(page: Any, selectors: tuple[str, ...]) -> str | None:
@@ -26,6 +30,15 @@ def _find_visible(page: Any, selectors: tuple[str, ...]) -> str | None:
     return None
 
 
+def _notify(callback: Any, ok: bool) -> None:
+    if callback is None:
+        return
+    try:
+        callback(ok)
+    except Exception:
+        log.exception("发送结果回调失败")
+
+
 def _type_into_page(page: Any, text: str) -> bool:
     input_selector = _find_visible(page, INPUT_SELECTORS)
     send_selector = _find_visible(page, SEND_SELECTORS)
@@ -36,59 +49,109 @@ def _type_into_page(page: Any, text: str) -> bool:
     return True
 
 
+PRIORITIES = {"low": 0, "normal": 1, "high": 2}
+
+
 class Danmaku:
     def __init__(self) -> None:
-        self._queue: deque[tuple[str, str, str, str]] = deque()
+        self._queue: deque[dict] = deque()
         self._lock = threading.Lock()
         self._last_sent_at: float | None = None
 
-    def submit(self, text: str, *, source: str, event_id: str, reason: str) -> None:
+    def submit(
+        self,
+        text: str,
+        *,
+        source: str,
+        event_id: str,
+        reason: str,
+        priority: str = "normal",
+        on_result: Any = None,
+    ) -> None:
+        """on_result(ok: bool) 在发送尝试结束后被调用一次（工人线程）。"""
         text = (text or "").strip()
         if not text:
+            return
+        if len(text) > MAX_TEXT_CHARS:
+            log.info("弹幕超长（%d 字 > %d），拒绝入队 [%s] %s", len(text), MAX_TEXT_CHARS, source, text)
+            if on_result is not None:
+                _notify(on_result, False)
             return
         cfg = config_store.feature_config("danmaku")
         if not cfg.get("enabled"):
             log.info("danmaku 关闭，丢弃 [%s] %s", source, text)
+            if on_result is not None:
+                _notify(on_result, False)
             return
         queue_max = max(1, int(cfg.get("queue_max") or 1))
+        level = PRIORITIES.get(priority, PRIORITIES["normal"])
         dropped = None
         with self._lock:
             if len(self._queue) >= queue_max:
-                dropped = self._queue.popleft()
-            self._queue.append((text, source, event_id, reason))
+                dropped = self._pick_drop_candidate()
+                if dropped is not None:
+                    self._queue.remove(dropped)
+            self._queue.append(
+                {
+                    "priority": level,
+                    "text": text,
+                    "source": source,
+                    "event_id": event_id,
+                    "reason": reason,
+                    "on_result": on_result,
+                }
+            )
         if dropped is not None:
-            log.info("danmaku 队列已满，挤掉最旧的 [%s] %s", dropped[1], dropped[0])
-        log.info("入队 [%s] %s （%s / %s）", source, text, reason, event_id)
+            log.info("danmaku 队列已满，挤掉最旧的 [%s] %s", dropped["source"], dropped["text"])
+            _notify(dropped.get("on_result"), False)
+        log.info("入队 [%s] %s （%s / %s / %s）", source, text, reason, event_id, priority)
+
+    def _pick_drop_candidate(self) -> dict | None:
+        """队列满时优先挤掉最旧的一条低优先级消息。"""
+        if not self._queue:
+            return None
+        for level in sorted({item["priority"] for item in self._queue}):
+            for item in self._queue:
+                if item["priority"] == level:
+                    return item
+        return None
 
     def pump(self, page: Any) -> None:
         """工人线程专用：到间隔取一条往输入框发。失败记日志，不重试。"""
         item = self._pop_due()
         if item is None or page is None:
             return
-        text, source, event_id, reason = item
+        ok = False
         try:
-            ok = _type_into_page(page, text)
+            ok = _type_into_page(page, item["text"])
         except Exception as exc:
-            log.info("发送异常 [%s] %s：%s", source, text, exc)
-            return
+            log.info("发送异常 [%s] %s：%s", item["source"], item["text"], exc)
         if ok:
-            self._mark_sent()
-            log.info("已发送 [%s] %s （%s / %s）", source, text, reason, event_id)
+            sent_at = self._mark_sent()
+            chat_state.remember_outbound(item["text"], observed_at=sent_at)
+            log.info("已发送 [%s] %s （%s / %s）", item["source"], item["text"], item["reason"], item["event_id"])
         else:
             log.info(
                 "发送失败 [%s] %s：未找到可见输入框/发送按钮。无窗口看不到输入框时，可勾选「显示直播间窗口」再启动",
-                source,
-                text,
+                item["source"],
+                item["text"],
             )
+        _notify(item.get("on_result"), ok)
 
     def clear(self) -> None:
         with self._lock:
-            dropped = len(self._queue)
+            dropped = list(self._queue)
             self._queue.clear()
         if dropped:
-            log.info("danmaku 队列已清空（%s 条）", dropped)
+            log.info("danmaku 队列已清空（%s 条）", len(dropped))
+        for item in dropped:
+            _notify(item.get("on_result"), False)
 
-    def _pop_due(self) -> tuple[str, str, str, str] | None:
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {"queue_size": len(self._queue)}
+
+    def _pop_due(self) -> dict | None:
         with self._lock:
             if not self._queue:
                 return None
@@ -99,12 +162,23 @@ class Danmaku:
                 and time.monotonic() - self._last_sent_at < interval_ms / 1000.0
             ):
                 return None
-            return self._queue.popleft()
+            # 同优先级先进先出，高优先级先出；都不绕过全局发送 CD
+            best_index = 0
+            for index, item in enumerate(self._queue):
+                if item["priority"] > self._queue[best_index]["priority"]:
+                    best_index = index
+            if best_index == 0:
+                return self._queue.popleft()
+            item = self._queue[best_index]
+            del self._queue[best_index]
+            return item
 
-    def _mark_sent(self) -> None:
+    def _mark_sent(self) -> float:
         """只有网页发送按钮成功点击后才开始计算下一条的 CD。"""
+        sent_at = time.monotonic()
         with self._lock:
-            self._last_sent_at = time.monotonic()
+            self._last_sent_at = sent_at
+        return sent_at
 
 
 danmaku = Danmaku()

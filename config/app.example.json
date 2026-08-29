@@ -1,6 +1,23 @@
 {
   "room": "",
   "show_browser": false,
+  "chat_control": {
+    "owner_uid": "",
+    "owner_nick": "",
+    "whitelist": []
+  },
+  "interaction": {
+    "enabled": false
+  },
+  "novel": {
+    "enabled": false,
+    "novel_id": "",
+    "max_chars": 28,
+    "interval_ms": 10000,
+    "loop": true,
+    "next_index": 0,
+    "state": "paused"
+  },
   "welcome": {
     "enabled": false,
     "min_noble_level": 2,

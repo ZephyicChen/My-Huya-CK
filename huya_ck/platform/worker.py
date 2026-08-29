@@ -10,8 +10,10 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from huya_ck.features.danmaku.handler import danmaku
+from huya_ck.features.novel.player import novel_player
 from huya_ck.log import get_logger
 from huya_ck.platform.channel import channel_state
+from huya_ck.platform.chat_state import chat_state
 from huya_ck.platform.official_taf import attach_official_taf
 from huya_ck.platform.session import HUYA_HOME, current_page, launch_persistent, room_url
 
@@ -56,13 +58,16 @@ class RoomWorker:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {
+            state = {
                 "running": self._running,
                 "logged_in": self._logged_in,
                 "headless": self._headless,
                 "room": self._room,
                 "message": self._message,
             }
+        state["taf_connected"] = channel_state.is_connected()
+        state.update(danmaku.snapshot())
+        return state
 
     def _set(self, **kwargs: Any) -> None:
         with self._lock:
@@ -142,6 +147,7 @@ class RoomWorker:
                 self._rehang(page)
                 return
         danmaku.pump(page)
+        novel_player.tick()
 
     def _rehang(self, page) -> None:
         """TAF 通道断开：重新进直播间让页面重建订阅。"""
@@ -154,6 +160,7 @@ class RoomWorker:
         log.info("事件通道断开，重新进入直播间 %s", room)
         try:
             channel_state.reset()
+            chat_state.reset_connection()
             page.goto(room, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(2000)
             log.info("直播间已重新挂上")
@@ -201,7 +208,9 @@ class RoomWorker:
                 if cmd in ("stop", "quit"):
                     log.info("停止挂房，关闭后台浏览器")
                     danmaku.clear()
+                    novel_player.pause(reason="已停止挂房")
                     channel_state.reset()
+                    chat_state.reset_connection()
                     pw, context = _close(pw, context)
                     ctx_headless = None
                     self._set(running=False, headless=None, room="", message="已停止挂房。命令行窗口仍在，可再次启动。")
@@ -246,8 +255,9 @@ class RoomWorker:
                     url = str(payload["url"])
                     log.info("进入直播间 %s", url)
                     channel_state.reset()
+                    chat_state.reset_connection()
                     page = self._open_room(context, url)
-                    log.info("直播间已挂上（%s），持续监听进场/礼物/开通", "后台无窗口" if want_headless else "有窗口")
+                    log.info("直播间已挂上（%s），持续监听弹幕、进场、礼物和开通", "后台无窗口" if want_headless else "有窗口")
                     if want_headless:
                         message = "已在后台进入直播间（无窗口）。场控页可点停止。"
                     else:

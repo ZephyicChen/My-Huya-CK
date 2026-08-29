@@ -7,6 +7,7 @@ from huya_ck.platform.official_taf import (
     normalize_official_6540,
     normalize_official_1001,
     normalize_official_10079,
+    normalize_official_1400,
 )
 
 
@@ -64,6 +65,7 @@ class OfficialTafTest(unittest.TestCase):
                 "__huya_ck_on_6540",
                 "__huya_ck_on_1001",
                 "__huya_ck_on_10079",
+                "__huya_ck_on_1400",
                 "__huya_ck_taf_status",
             },
         )
@@ -115,7 +117,7 @@ class OfficialTafTest(unittest.TestCase):
         self.assertEqual(seen[3]["action"], "开通")
 
     def test_bridge_subscribes_all_business_uris(self) -> None:
-        for uri in (1001, 6110, 6501, 6540, 10079, 2001231):
+        for uri in (1001, 1400, 6110, 6501, 6540, 10079, 2001231):
             self.assertIn(f'signal.addTafListener("{uri}"', OFFICIAL_TAF_BRIDGE_SCRIPT)
 
     def test_normalizes_superfan_to_open_wording(self) -> None:
@@ -198,6 +200,25 @@ class OfficialTafTest(unittest.TestCase):
         self.assertEqual(event["value_fen"], 100)
         self.assertEqual(event["value_yuan"], 1)
         self.assertEqual(event["order_id"], "pay-123")
+
+    def test_normalizes_user_chat_without_losing_large_uid(self) -> None:
+        event = normalize_official_1400(
+            {
+                "uid": "9007199254740999",
+                "nick": "遥控用户",
+                "content": "测试弹幕",
+                "room_id": "12345678",
+                "message_id": "987654321",
+            }
+        )
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event["type"], "chat_message")
+        self.assertEqual(event["uid"], 9007199254740999)
+        self.assertEqual(event["content"], "测试弹幕")
+        self.assertEqual(event["event_id"], "1400:987654321:9007199254740999")
+        self.assertIsNone(normalize_official_1400({"uid": "1", "nick": "系统消息", "content": "通知"}))
+        self.assertIsNone(normalize_official_1400({"uid": "1", "nick": "缺正文"}))
 
     def test_normalizes_guard_with_taf_fields(self) -> None:
         event = normalize_official_6540(

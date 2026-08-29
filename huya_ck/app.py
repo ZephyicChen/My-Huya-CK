@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from huya_ck import __version__
+from huya_ck.api.chat import router as chat_router
 from huya_ck.api.config import router as config_router
+from huya_ck.api.novels import router as novels_router
 from huya_ck.api.run import router as run_router
 from huya_ck.log import get_logger, setup_logging
 from huya_ck.paths import WEB_DIR
@@ -34,6 +36,8 @@ def create_app() -> FastAPI:
     )
     app.include_router(config_router, prefix="/api")
     app.include_router(run_router, prefix="/api/run")
+    app.include_router(chat_router, prefix="/api/chat")
+    app.include_router(novels_router, prefix="/api")
 
     index = WEB_DIR / "index.html"
     assets = WEB_DIR / "assets"
@@ -87,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             reload=False,
             log_level="info",
+            access_log=False,
         )
     finally:
         worker.shutdown()

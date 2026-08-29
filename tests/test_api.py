@@ -47,6 +47,24 @@ class ApiTest(unittest.TestCase):
     def test_run_status_not_started(self) -> None:
         data = self.client.get("/api/run/status").json()
         self.assertFalse(data["running"])
+        self.assertEqual(data["queue_size"], 0)
+
+    def test_chat_control_roundtrip(self) -> None:
+        response = self.client.put(
+            "/api/chat/control",
+            json={
+                "config": {
+                    "owner_uid": "9007199254740999",
+                    "owner_nick": "本人",
+                    "whitelist": [{"uid": "8", "nick": "助手", "enabled": True}],
+                }
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = self.client.get("/api/chat/control").json()
+        self.assertEqual(data["config"]["owner_uid"], "9007199254740999")
+        self.assertEqual(data["config"]["whitelist"][0]["uid"], "8")
+        self.assertIn("recent_speakers", self.client.get("/api/chat/state").json()["state"])
 
     def test_start_without_room(self) -> None:
         response = self.client.post("/api/run/start")

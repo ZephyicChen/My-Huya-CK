@@ -25,6 +25,9 @@ venv/
 # 本机场控配置（仓库只提交 config/app.example.json）
 /config/app.json
 
+# 本地小说库（含小说正文与进度）
+/data/
+
 # 本地代理协作记录
 /AGENTS.md
 /HANDOFF.md

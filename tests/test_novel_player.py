@@ -209,14 +209,12 @@ class DanmakuLimitTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.path_patch.stop()
 
-    def test_overlong_text_is_rejected(self) -> None:
+    def test_overlong_text_still_queued(self) -> None:
         queue = Danmaku()
-        results = []
-        queue.submit("一" * 29, source="t", event_id="1", reason="r", on_result=lambda ok: results.append(ok))
+        queue.submit("一" * 29, source="t", event_id="1", reason="r")
         queue.submit("一" * 28, source="t", event_id="2", reason="r")
-        # 超长的被拒（回调失败），28 字正常入队
-        self.assertEqual(results, [False])
-        self.assertEqual(queue.snapshot()["queue_size"], 1)
+        # 超长不再被拒，照常入队（只记日志）
+        self.assertEqual(queue.snapshot()["queue_size"], 2)
 
     def test_priority_pops_first_and_keeps_fifo(self) -> None:
         queue = Danmaku()

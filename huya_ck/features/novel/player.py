@@ -113,7 +113,7 @@ class NovelPlayer:
 
     def tick(self) -> None:
         """工人线程每个泵循环调用一次。只管自己的状态；发送被全局关闭时，
-        danmaku.submit 会拒绝入队并回调失败，播放器照常推进（失败不重试）。"""
+        danmaku.submit 关闭时会丢弃并回调失败，播放器照常推进（失败不重试）。"""
         cfg = config_store.novel_config()
         if cfg["state"] != "playing":
             return

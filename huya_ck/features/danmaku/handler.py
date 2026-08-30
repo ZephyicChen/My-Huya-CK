@@ -16,7 +16,7 @@ log = get_logger()
 INPUT_SELECTORS = ("#pub_msg_input", "input[name='msg']", "textarea.chat-input")
 SEND_SELECTORS = ("#msg_send_bt", "a.chat-send", "button.chat-send")
 
-# 虎牙弹幕输入框 30 字上限；留 2 字余量，超长拒绝入队（不做截断，截断的欢迎语更难看）
+# 虎牙弹幕输入框上限约 30 字；超长只记日志提示，不拦截
 MAX_TEXT_CHARS = 28
 
 
@@ -73,10 +73,8 @@ class Danmaku:
         if not text:
             return
         if len(text) > MAX_TEXT_CHARS:
-            log.info("弹幕超长（%d 字 > %d），拒绝入队 [%s] %s", len(text), MAX_TEXT_CHARS, source, text)
-            if on_result is not None:
-                _notify(on_result, False)
-            return
+            # 超长只提示，不拦截：虎牙输入框实际 30 字，是否放行由发送端决定
+            log.info("弹幕超长（%d 字 > %d），仍尝试发送 [%s] %s", len(text), MAX_TEXT_CHARS, source, text)
         cfg = config_store.feature_config("danmaku")
         if not cfg.get("enabled"):
             log.info("danmaku 关闭，丢弃 [%s] %s", source, text)

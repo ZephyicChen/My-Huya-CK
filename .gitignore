@@ -47,3 +47,4 @@ validation/ws-dumps/
 
 # 本地运行日志（可能含用户昵称与房间信息）
 logs/
+story/

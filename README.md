@@ -85,6 +85,17 @@ LU 一级指令：`LU 开启/关闭 发送/欢迎/感谢`，空格可省略，LU
 
 ## 开发与发布检查
 
+项目脚本一览（均双击或命令行运行，自动定位项目根目录）：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `run.bat` | 唯一入口：查找/自动安装 Python 3.10+，准备 `.venv` 与专用 Chromium，启动场控 |
+| `tests.bat` | 跑 `tests/` 全量单元测试（需先 `run.bat` 建好环境） |
+| `release-check.bat` | 发布前检查：测试 + 默认配置/WebUI 产物/敏感目录校验 + Git 状态 |
+| `ensure_env.py` | 环境准备（幂等）：建 `.venv`、装依赖、下载 Chromium；`--force` 全部重装 |
+| `release_check.py` | 发布检查的只读校验逻辑，由 release-check.bat 调用 |
+| `validation/run.bat` | 抓包分析探针菜单（仅研发用，验证协议用后即删） |
+
 ```bat
 tests.bat
 release-check.bat

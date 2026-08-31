@@ -43,7 +43,9 @@ if exist "%VENV_PY%" (
 )
 call :find_host_python
 if errorlevel 1 exit /b 1
-"%HOST_PY%" "%~dp0ensure_env.py"
+rem HOST_PY 可能是 "py -3" 这类带参数的命令，不能整体加引号，否则 cmd
+rem 会把 "py -3" 当成单个程序名执行而报 not recognized
+%HOST_PY% "%~dp0ensure_env.py"
 if errorlevel 1 exit /b 1
 if not exist "%VENV_PY%" exit /b 1
 exit /b 0

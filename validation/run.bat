@@ -21,8 +21,8 @@ if not exist "%VENV_PY%" (
 echo   [1] login
 echo   [2] capture URI
 echo   [3] send-test
-echo   [5] list latest raw log
-echo   [6] analyze log
+echo   [4] list latest raw log
+echo   [5] analyze log
 echo   [0] exit
 echo.
 set "choice="
@@ -30,8 +30,8 @@ set /p choice=choice:
 if "%choice%"=="1" goto login
 if "%choice%"=="2" goto capture
 if "%choice%"=="3" goto sendtest
-if "%choice%"=="5" goto logs
-if "%choice%"=="6" goto analyze
+if "%choice%"=="4" goto logs
+if "%choice%"=="5" goto analyze
 if "%choice%"=="0" exit /b 0
 echo invalid
 goto menu

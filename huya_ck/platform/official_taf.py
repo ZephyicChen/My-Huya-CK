@@ -583,7 +583,7 @@ def normalize_official_1400(payload: Any) -> dict | None:
     return event
 
 
-def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = None) -> None:
+async def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = None) -> None:
     """导航前调用；init script 会在直播间页面等待 TTP 就绪并订阅。"""
     if getattr(page, "_huya_ck_official_taf", False):
         return
@@ -764,12 +764,12 @@ def attach_official_taf(page: Any, on_event: Callable[[dict], None] | None = Non
         )
         callback(event)
 
-    page.expose_function("__huya_ck_on_6110", on_6110)
-    page.expose_function("__huya_ck_on_6501", on_6501)
-    page.expose_function("__huya_ck_on_6540", on_6540)
-    page.expose_function("__huya_ck_on_1001", on_1001)
-    page.expose_function("__huya_ck_on_10079", on_10079)
-    page.expose_function("__huya_ck_on_1400", on_1400)
-    page.expose_function("__huya_ck_taf_status", on_status)
-    page.add_init_script(script=OFFICIAL_TAF_BRIDGE_SCRIPT)
+    await page.expose_function("__huya_ck_on_6110", on_6110)
+    await page.expose_function("__huya_ck_on_6501", on_6501)
+    await page.expose_function("__huya_ck_on_6540", on_6540)
+    await page.expose_function("__huya_ck_on_1001", on_1001)
+    await page.expose_function("__huya_ck_on_10079", on_10079)
+    await page.expose_function("__huya_ck_on_1400", on_1400)
+    await page.expose_function("__huya_ck_taf_status", on_status)
+    await page.add_init_script(script=OFFICIAL_TAF_BRIDGE_SCRIPT)
     log.debug("诊断：已准备网页官方 1400 及自动场控事件监听，等待直播间 TTP 通道就绪")

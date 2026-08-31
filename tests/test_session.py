@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from huya_ck.platform.session import current_page
@@ -16,7 +17,7 @@ class _Context:
         self.pages = pages
         self.created = None
 
-    def new_page(self):
+    async def new_page(self):
         self.created = _Page()
         return self.created
 
@@ -27,11 +28,11 @@ class SessionTest(unittest.TestCase):
         middle = _Page()
         latest = _Page()
         context = _Context([old, middle, latest])
-        self.assertIs(current_page(context), latest)
+        self.assertIs(asyncio.run(current_page(context)), latest)
 
     def test_creates_page_when_all_are_closed(self) -> None:
         context = _Context([_Page(closed=True)])
-        self.assertIs(current_page(context), context.created)
+        self.assertIs(asyncio.run(current_page(context)), context.created)
 
 
 if __name__ == "__main__":

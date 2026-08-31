@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from huya_ck.platform.official_taf import (
     OFFICIAL_TAF_BRIDGE_SCRIPT,
@@ -16,10 +17,10 @@ class _FakePage:
         self.functions = {}
         self.scripts = []
 
-    def expose_function(self, name, callback) -> None:
+    async def expose_function(self, name, callback) -> None:
         self.functions[name] = callback
 
-    def add_init_script(self, *, script) -> None:
+    async def add_init_script(self, *, script) -> None:
         self.scripts.append(script)
 
 
@@ -55,8 +56,8 @@ class OfficialTafTest(unittest.TestCase):
     def test_attach_exposes_bridge_once(self) -> None:
         page = _FakePage()
         seen = []
-        attach_official_taf(page, seen.append)
-        attach_official_taf(page, seen.append)
+        asyncio.run(attach_official_taf(page, seen.append))
+        asyncio.run(attach_official_taf(page, seen.append))
         self.assertEqual(
             set(page.functions),
             {

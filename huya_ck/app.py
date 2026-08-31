@@ -1,8 +1,10 @@
-"""FastAPI 入口：配置 API + 静态 WebUI。"""
+"""FastAPI 入口：配置 API + 静态 WebUI。房间监督者与 WebUI 共享同一事件循环。"""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import mimetypes
 import webbrowser
 
@@ -26,8 +28,18 @@ mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("text/html", ".html")
 
 
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI):
+    worker.ensure_started()
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(worker.shutdown(), timeout=15)
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="huya_ck", version=__version__)
+    app = FastAPI(title="huya_ck", version=__version__, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -84,15 +96,12 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    try:
-        uvicorn.run(
-            "huya_ck.app:app",
-            host=args.host,
-            port=args.port,
-            reload=False,
-            log_level="info",
-            access_log=False,
-        )
-    finally:
-        worker.shutdown()
+    uvicorn.run(
+        "huya_ck.app:app",
+        host=args.host,
+        port=args.port,
+        reload=False,
+        log_level="info",
+        access_log=False,
+    )
     return 0

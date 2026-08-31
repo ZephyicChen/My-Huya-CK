@@ -1,7 +1,8 @@
-"""弹幕发送队列。其它模块只调用 submit；真正点输入框在工人线程的 pump 里。"""
+"""弹幕发送队列。其它模块只调用 submit；真正点输入框在事件循环的发送任务里。"""
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from collections import deque
@@ -20,10 +21,10 @@ SEND_SELECTORS = ("#msg_send_bt", "a.chat-send", "button.chat-send")
 MAX_TEXT_CHARS = 28
 
 
-def _find_visible(page: Any, selectors: tuple[str, ...]) -> str | None:
+async def _find_visible(page: Any, selectors: tuple[str, ...]) -> str | None:
     for selector in selectors:
         try:
-            if page.locator(selector).first.is_visible(timeout=500):
+            if await page.locator(selector).first.is_visible(timeout=500):
                 return selector
         except Exception:
             continue
@@ -39,13 +40,13 @@ def _notify(callback: Any, ok: bool) -> None:
         log.exception("发送结果回调失败")
 
 
-def _type_into_page(page: Any, text: str) -> bool:
-    input_selector = _find_visible(page, INPUT_SELECTORS)
-    send_selector = _find_visible(page, SEND_SELECTORS)
+async def _type_into_page(page: Any, text: str) -> bool:
+    input_selector = await _find_visible(page, INPUT_SELECTORS)
+    send_selector = await _find_visible(page, SEND_SELECTORS)
     if not input_selector or not send_selector:
         return False
-    page.fill(input_selector, text, timeout=2000)
-    page.click(send_selector, timeout=2000)
+    await page.fill(input_selector, text, timeout=2000)
+    await page.click(send_selector, timeout=2000)
     return True
 
 
@@ -56,6 +57,7 @@ class Danmaku:
     def __init__(self) -> None:
         self._queue: deque[dict] = deque()
         self._lock = threading.Lock()
+        self._work: asyncio.Event = asyncio.Event()
         self._last_sent_at: float | None = None
 
     def submit(
@@ -99,6 +101,7 @@ class Danmaku:
                     "on_result": on_result,
                 }
             )
+            self._work.set()
         if dropped is not None:
             log.info("danmaku 队列已满，挤掉最旧的 [%s] %s", dropped["source"], dropped["text"])
             _notify(dropped.get("on_result"), False)
@@ -114,16 +117,18 @@ class Danmaku:
                     return item
         return None
 
-    def pump(self, page: Any) -> None:
-        """工人线程专用：到间隔取一条往输入框发。失败记日志，不重试。"""
+    async def pump(self, page: Any) -> None:
+        """发送任务专用：到间隔取一条往输入框发。失败记日志，不重试。"""
         item = self._pop_due()
         if item is None or page is None:
+            self._sync_work_flag()
             return
         ok = False
         try:
-            ok = _type_into_page(page, item["text"])
+            ok = await _type_into_page(page, item["text"])
         except Exception as exc:
             log.info("发送异常 [%s] %s：%s", item["source"], item["text"], exc)
+        self._sync_work_flag()
         if ok:
             sent_at = self._mark_sent()
             chat_state.remember_outbound(item["text"], observed_at=sent_at)
@@ -140,14 +145,32 @@ class Danmaku:
         with self._lock:
             dropped = list(self._queue)
             self._queue.clear()
+            self._work.clear()
         if dropped:
             log.info("danmaku 队列已清空（%s 条）", len(dropped))
         for item in dropped:
             _notify(item.get("on_result"), False)
 
+    def _sync_work_flag(self) -> None:
+        """队列空了就熄灭唤醒事件，让发送任务安心睡眠。"""
+        with self._lock:
+            if not self._queue:
+                self._work.clear()
+
+    async def wait_work(self, timeout: float) -> None:
+        """发送任务空闲时等待：有新消息立即醒，否则最多睡 timeout 秒。"""
+        try:
+            await asyncio.wait_for(self._work.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+
     def snapshot(self) -> dict[str, int]:
         with self._lock:
             return {"queue_size": len(self._queue)}
+
+    def has_queued(self) -> bool:
+        with self._lock:
+            return bool(self._queue)
 
     def _pop_due(self) -> dict | None:
         with self._lock:

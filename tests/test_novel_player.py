@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -231,8 +232,12 @@ class DanmakuLimitTest(unittest.TestCase):
         queue = Danmaku()
         results = []
         queue.submit("失败条", source="t", event_id="1", reason="r", on_result=lambda ok: results.append(ok))
-        with patch("huya_ck.features.danmaku.handler._type_into_page", return_value=False):
-            queue.pump(object())
+
+        async def fake_type(page, text):
+            return False
+
+        with patch("huya_ck.features.danmaku.handler._type_into_page", fake_type):
+            asyncio.run(queue.pump(object()))
         self.assertEqual(results, [False])
         self.assertEqual(queue.snapshot()["queue_size"], 0)
 

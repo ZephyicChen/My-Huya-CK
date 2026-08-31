@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _TOKEN = re.compile(r"\{([^{}]*)\}")
 _FALLBACK = "|"
+
+
+def nick_values(uid: Any, real_nick: str) -> dict:
+    """{nick}/{real_nick} 模板变量：昵称映射命中时 {nick} 输出自定义称呼。"""
+    from huya_ck.platform import config_store
+
+    real = str(real_nick or "")
+    return {"nick": config_store.display_nick(uid, real), "real_nick": real}
 
 
 def render(template: str, data: dict) -> str:

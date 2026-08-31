@@ -84,3 +84,21 @@ class ApiTest(unittest.TestCase):
         response = self.client.get(f"/assets/{scripts[0].name}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("javascript", response.headers["content-type"])
+
+    def test_nick_overrides_roundtrip_and_validation(self) -> None:
+        response = self.client.put(
+            "/api/nick-overrides",
+            json={"nick_overrides": [{"uid": "111", "alias": "大哥", "note": "备注", "enabled": True}]},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["nick_overrides"][0]["alias"], "大哥")
+
+        self.assertEqual(self.client.get("/api/nick-overrides").json()["nick_overrides"][0]["uid"], "111")
+
+        # 非法输入：非数组、未知字段
+        self.assertEqual(self.client.put("/api/nick-overrides", json={"nick_overrides": "x"}).status_code, 400)
+        self.assertEqual(
+            self.client.put("/api/nick-overrides", json={"nick_overrides": [{"uid": "1", "alias": "a", "bad": 1}]}).status_code,
+            400,
+        )

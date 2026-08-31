@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from huya_ck.features.danmaku.handler import Danmaku
-from huya_ck.features.template import render
+from huya_ck.features.template import nick_values, render
 from huya_ck.log import get_logger
 
 log = get_logger()
@@ -29,11 +29,11 @@ def consider(event: dict, config: dict, danmaku: Danmaku) -> None:
     text = render(
         str(config.get("template") or ""),
         {
-            "nick": nick,
             "action": action,
             "superfan_name": superfan_name,
+            **nick_values(event.get("uid"), nick),
         },
-    ) or render(DEFAULT_TEMPLATE, {"nick": nick, "superfan_name": superfan_name})
+    ) or render(DEFAULT_TEMPLATE, {**nick_values(event.get("uid"), nick), "superfan_name": superfan_name})
     danmaku.submit(
         text,
         source="superfan_thank",

@@ -46,5 +46,6 @@
     "enabled": false,
     "interval_ms": 3000,
     "queue_max": 20
-  }
+  },
+  "nick_overrides": []
 }

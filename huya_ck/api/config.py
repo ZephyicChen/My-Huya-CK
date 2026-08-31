@@ -59,3 +59,25 @@ def put_feature_config(feature_id: str, body: dict) -> dict:
         raise HTTPException(status_code=400, detail=f"unknown keys: {sorted(unknown)}")
     config = config_store.put_feature(feature_id, patch)
     return {"id": feature_id, "config": config}
+
+
+@router.get("/nick-overrides")
+def get_nick_overrides() -> dict:
+    return {"nick_overrides": config_store.nick_overrides_config()}
+
+
+@router.put("/nick-overrides")
+def put_nick_overrides(body: dict) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="body must be an object")
+    overrides = body.get("nick_overrides", body)
+    if not isinstance(overrides, list):
+        raise HTTPException(status_code=400, detail="nick_overrides must be an array")
+    for item in overrides:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="nick_overrides items must be objects")
+        unknown = set(item) - {"uid", "alias", "note", "enabled"}
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"unknown keys: {sorted(unknown)}")
+    saved = config_store.put_nick_overrides(overrides)
+    return {"nick_overrides": saved}

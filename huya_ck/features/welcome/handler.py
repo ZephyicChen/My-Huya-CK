@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from huya_ck.features.danmaku.handler import Danmaku
-from huya_ck.features.template import render
+from huya_ck.features.template import nick_values, render
 from huya_ck.log import get_logger
 
 log = get_logger()
@@ -42,7 +42,7 @@ def _fill(template: str, event: dict) -> str:
         {
             "guard_prefix": guard_prefix(event) if event.get("has_guard") else "",
             "noble_prefix": noble_prefix(event),
-            "nick": event.get("nick") or "",
+            **nick_values(event.get("uid"), event.get("nick") or ""),
             "noble_name": event.get("noble_name") or "",
             "noble_level": event.get("noble_level") if event.get("noble_level") is not None else "",
             "consume_level": event.get("consume_level") if event.get("consume_level") is not None else "",

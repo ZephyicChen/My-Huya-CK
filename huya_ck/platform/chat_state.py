@@ -57,10 +57,11 @@ class ChatState:
             return None
         now = time.time()
         authorization = config_store.chat_authorization(uid)
+        display = config_store.display_nick(uid, nick)
         with self._lock:
             self._last_message_at = now
             self._speakers.pop(uid, None)
-            self._speakers[uid] = {"uid": uid, "nick": nick, "last_seen": now}
+            self._speakers[uid] = {"uid": uid, "nick": nick, "display_nick": display, "last_seen": now}
             while len(self._speakers) > self._speaker_limit:
                 self._speakers.popitem(last=False)
             if is_outbound:
@@ -73,6 +74,7 @@ class ChatState:
                 "time": now,
                 "uid": uid,
                 "nick": nick,
+                "display_nick": display,
                 "content": content,
                 "role": authorization["role"],
             }

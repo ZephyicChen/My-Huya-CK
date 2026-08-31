@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from huya_ck.features.danmaku.handler import Danmaku
-from huya_ck.features.template import render
+from huya_ck.features.template import nick_values, render
 from huya_ck.log import get_logger
 
 log = get_logger()
@@ -13,7 +13,7 @@ def _fill(template: str, event: dict) -> str:
     return render(
         template or DEFAULT_TEMPLATE,
         {
-            "nick": event.get("sender_nick") or "",
+            **nick_values(event.get("sender_uid"), event.get("sender_nick") or ""),
             "item_name": event.get("item_name") or "",
             "count": event.get("count") or 1,
             "value_yuan": event.get("value_yuan") if event.get("value_yuan") is not None else "",

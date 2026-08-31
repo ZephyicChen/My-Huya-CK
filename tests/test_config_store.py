@@ -63,3 +63,39 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertEqual(config_store.chat_authorization("9007199254740999", config_store.load(self.tmp))["role"], "owner")
         self.assertEqual(config_store.chat_authorization("8", config_store.load(self.tmp))["role"], "whitelist")
         self.assertIsNone(config_store.chat_authorization("9", config_store.load(self.tmp)))
+
+    def test_nick_overrides_parse_and_display(self) -> None:
+        config_store.put_nick_overrides(
+            [
+                {"uid": " 111 ", "alias": " 大哥 ", "note": "x" * 100, "enabled": True},
+                {"uid": "222", "alias": "停用", "enabled": False},
+                {"uid": "111", "alias": "重复"},
+                {"uid": "", "alias": "无UID"},
+                {"uid": "333", "alias": ""},
+            ],
+            self.tmp,
+        )
+        doc = config_store.load(self.tmp)
+        overrides = config_store.nick_overrides_config(doc)
+        self.assertEqual([item["uid"] for item in overrides], ["111", "222"])
+        self.assertEqual(overrides[0]["alias"], "大哥")
+        self.assertEqual(len(overrides[0]["note"]), 80)
+
+        # display_nick：命中→alias；禁用条目→实时昵称；未命中→实时昵称
+        self.assertEqual(config_store.display_nick("111", "abc", doc), "大哥")
+        self.assertEqual(config_store.display_nick("222", "abc", doc), "abc")
+        self.assertEqual(config_store.display_nick("999", "abc", doc), "abc")
+
+    def test_display_nick_owner_fallback(self) -> None:
+        config_store.put_chat_control({"owner_uid": "1", "owner_nick": "本人"}, self.tmp)
+        doc = config_store.load(self.tmp)
+        # 昵称映射优先于 owner 备注
+        config_store.put_nick_overrides([{"uid": "1", "alias": "大哥"}], self.tmp)
+        doc = config_store.load(self.tmp)
+        self.assertEqual(config_store.display_nick("1", "abc", doc), "大哥")
+        # 无映射时 owner 备注生效
+        config_store.put_nick_overrides([], self.tmp)
+        doc = config_store.load(self.tmp)
+        self.assertEqual(config_store.display_nick("1", "abc", doc), "本人")
+        # 其他人不受影响
+        self.assertEqual(config_store.display_nick("2", "abc", doc), "abc")

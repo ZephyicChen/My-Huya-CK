@@ -18,6 +18,7 @@ log = get_logger()
 
 PLATFORM_DEFAULT = {"room": "", "show_browser": False}
 CHAT_CONTROL_DEFAULT = {"owner_uid": "", "owner_nick": "", "whitelist": []}
+NICK_OVERRIDES_DEFAULT: list = []
 INTERACTION_DEFAULT = {"enabled": False}
 INTERACTION_MODULE_IDS = ("novel",)
 CONTROL_MODULE_IDS = (
@@ -44,6 +45,7 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 def empty_document() -> dict:
     doc = dict(PLATFORM_DEFAULT)
     doc["chat_control"] = deepcopy(CHAT_CONTROL_DEFAULT)
+    doc["nick_overrides"] = deepcopy(NICK_OVERRIDES_DEFAULT)
     doc["interaction"] = deepcopy(INTERACTION_DEFAULT)
     doc["novel"] = deepcopy(NOVEL_DEFAULT)
     doc.update(deepcopy(feature_defaults()))
@@ -68,6 +70,7 @@ def save(doc: dict, path: Path | None = None) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         merged = _deep_merge(empty_document(), doc)
         merged["chat_control"] = chat_control_config(merged)
+        merged["nick_overrides"] = nick_overrides_config(merged)
         tmp = target.with_suffix(".json.tmp")
         with tmp.open("w", encoding="utf-8", newline="\n") as handle:
             json.dump(merged, handle, ensure_ascii=False, indent=2)
@@ -261,3 +264,54 @@ def chat_authorization(uid: Any, doc: dict | None = None) -> dict | None:
                 "allowed_interactions": list(item["allowed_interactions"]),
             }
     return None
+
+
+def nick_overrides_config(doc: dict | None = None) -> list[dict]:
+    """昵称映射：UID -> 自定义称呼。与白名单（权限）完全独立。"""
+    data = doc if doc is not None else load()
+    raw = data.get("nick_overrides")
+    if not isinstance(raw, list):
+        return []
+    overrides: list[dict] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        uid = str(item.get("uid") or "").strip()
+        alias = str(item.get("alias") or "").strip()[:80]
+        if not uid or not alias or uid in seen:
+            continue
+        seen.add(uid)
+        overrides.append(
+            {
+                "uid": uid,
+                "alias": alias,
+                "note": str(item.get("note") or "").strip()[:80],
+                "enabled": bool(item.get("enabled", True)),
+            }
+        )
+    return overrides
+
+
+def put_nick_overrides(overrides: list, path: Path | None = None) -> list[dict]:
+    with _lock:
+        doc = load(path)
+        doc["nick_overrides"] = nick_overrides_config({"nick_overrides": overrides})
+        saved = save(doc, path)
+        return nick_overrides_config(saved)
+
+
+def display_nick(uid: Any, fallback: str = "", doc: dict | None = None) -> str:
+    """实际输出到弹幕的称呼：昵称映射优先，其次当前账号备注，否则实时昵称。"""
+    user_uid = str(uid or "").strip()
+    fallback = str(fallback or "")
+    if not user_uid:
+        return fallback
+    data = doc if doc is not None else load()
+    for item in nick_overrides_config(data):
+        if item["uid"] == user_uid and item["enabled"]:
+            return item["alias"]
+    chat_control = chat_control_config(data)
+    if user_uid == chat_control["owner_uid"] and chat_control["owner_nick"]:
+        return chat_control["owner_nick"]
+    return fallback

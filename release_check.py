@@ -83,6 +83,8 @@ def main() -> int:
     novel = config.get("novel")
     if not isinstance(novel, dict) or novel.get("enabled") is not False or novel.get("novel_id"):
         errors.append("config/app.example.json 必须包含未启用且未选择小说的 novel 段")
+    if config.get("nick_overrides") != []:
+        errors.append("config/app.example.json 必须包含空的 nick_overrides")
 
     tracked = git("ls-files")
     if tracked.returncode != 0:

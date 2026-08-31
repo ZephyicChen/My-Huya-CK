@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from huya_ck.features.danmaku.handler import Danmaku
-from huya_ck.features.template import render
+from huya_ck.features.template import nick_values, render
 from huya_ck.log import get_logger
 
 log = get_logger()
@@ -28,7 +28,7 @@ def consider(event: dict, config: dict, danmaku: Danmaku) -> None:
     if not config.get("enabled"):
         log.info("guard_thank 关闭，忽略 %s", nick)
         return
-    values = {"nick": nick, "action": action, "guard_name": guard_name}
+    values = {"action": action, "guard_name": guard_name, **nick_values(event.get("uid"), nick)}
     text = render(str(config.get("template") or ""), values) or render(DEFAULT_TEMPLATE, values)
     danmaku.submit(
         text,

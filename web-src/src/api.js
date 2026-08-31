@@ -53,6 +53,17 @@ export function getChatState() {
   return request("/api/chat/state");
 }
 
+export function getNickOverrides() {
+  return request("/api/nick-overrides");
+}
+
+export function putNickOverrides(nickOverrides) {
+  return request("/api/nick-overrides", {
+    method: "PUT",
+    body: JSON.stringify({ nick_overrides: nickOverrides }),
+  });
+}
+
 export function getInteraction() {
   return request("/api/interaction");
 }

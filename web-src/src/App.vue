@@ -8,6 +8,7 @@ import {
   getConfig,
   getFeatures,
   getInteraction,
+  getNickOverrides,
   getNovels,
   getNovelSettings,
   getRunStatus,
@@ -17,6 +18,7 @@ import {
   putChatControl,
   putFeatureConfig,
   putInteraction,
+  putNickOverrides,
   putNovelSettings,
   putPlatform,
   uploadNovel,
@@ -25,7 +27,7 @@ import {
 const tabs = [
   { id: "overview", label: "总览" },
   { id: "automatic", label: "自动场控" },
-  { id: "remote", label: "远程控制" },
+  { id: "people", label: "身份与权限" },
   { id: "interaction", label: "趣味互动" },
   { id: "records", label: "运行记录" },
 ];
@@ -45,6 +47,8 @@ const features = ref([]);
 const featureConfig = reactive({});
 const status = ref({ running: false, logged_in: null, message: "" });
 const chatControl = reactive({ owner_uid: "", owner_nick: "", whitelist: [] });
+const nickOverrides = reactive([]);
+const commandPanelOpen = ref(false);
 const chatState = ref({ attached: false, recent_speakers: [], records: [], authorized_count: 0, ignored_count: 0 });
 const interactionEnabled = ref(false);
 const novels = ref([]);
@@ -97,6 +101,45 @@ function toggleInteractionPermission(item, interactionId, checked) {
   if (checked) list.add(interactionId);
   else list.delete(interactionId);
   item.allowed_interactions = [...list];
+}
+
+function loadNickOverrides(list) {
+  nickOverrides.splice(0, nickOverrides.length, ...(list || []).map((item) => ({
+    uid: String(item.uid || ""),
+    alias: String(item.alias || ""),
+    note: String(item.note || ""),
+    enabled: item.enabled !== false,
+  })));
+}
+
+function addNickOverride(speaker = {}) {
+  const uid = String(speaker.uid || "");
+  if (uid && nickOverrides.some((item) => item.uid === uid)) return;
+  nickOverrides.push({
+    uid,
+    alias: String(speaker.nick || ""),
+    note: "",
+    enabled: true,
+  });
+}
+
+function removeNickOverride(index) {
+  nickOverrides.splice(index, 1);
+}
+
+async function onSaveNickOverrides() {
+  busy.value = "nick-save";
+  error.value = "";
+  notice.value = "";
+  try {
+    const data = await putNickOverrides(nickOverrides);
+    loadNickOverrides(data.nick_overrides);
+    notice.value = "昵称映射已保存";
+  } catch (err) {
+    error.value = String(err.message || err);
+  } finally {
+    busy.value = "";
+  }
 }
 
 async function refreshPlayer() {
@@ -256,13 +299,14 @@ async function refreshLiveStatus() {
 
 onMounted(async () => {
   try {
-    const [catalog, config, run, control, interaction, novelList] = await Promise.all([
+    const [catalog, config, run, control, interaction, novelList, overrides] = await Promise.all([
       getFeatures(),
       getConfig(),
       getRunStatus(),
       getChatControl(),
       getInteraction(),
       getNovels(),
+      getNickOverrides(),
     ]);
     features.value = catalog.features;
     room.value = config.platform.room || "";
@@ -272,6 +316,7 @@ onMounted(async () => {
     }
     status.value = run;
     loadChatConfig(control.config || {});
+    loadNickOverrides(overrides.nick_overrides);
     chatState.value = control.state || chatState.value;
     lastCommandSeq = chatState.value.command_seq || 0;
     interactionEnabled.value = !!interaction.interaction?.enabled;
@@ -464,26 +509,14 @@ function formatTime(value) {
       </div>
     </section>
 
-    <section v-else-if="activeTab === 'remote'" class="tab-page">
-      <div class="page-heading"><div><h2>远程控制</h2><p>随场控运行，没有更高一级开关；仅当前账号和授权白名单可以执行。</p></div><span class="status-chip good">随场控运行</span></div>
-      <section class="panel command-panel">
-        <header><h2>LU 场控指令</h2><span class="hint">LU 不区分大小写，空格可以省略</span></header>
-        <div class="command-grid">
-          <code>LU 开启 发送</code><code>LU 关闭 发送</code>
-          <code>LU 开启 欢迎</code><code>LU 关闭 欢迎</code>
-          <code>LU 开启 感谢</code><code>LU 关闭 感谢</code>
-          <code>LU 轮播 开始</code><code>LU 轮播 暂停</code>
-          <code>LU 轮播 继续</code><code>LU 轮播 停止</code>
-          <code>LU 轮播 下一条</code><code>LU 轮播 状态</code>
-        </div>
-        <p class="hint command-hint">“感谢”同时控制礼物、守护、超粉和贵族感谢。关闭“发送”会立即清空尚未发送的队列，轮播也会暂停。轮播指令需要在白名单里单独勾选“允许控制轮播”。</p>
-      </section>
+    <section v-else-if="activeTab === 'people'" class="tab-page">
+      <div class="page-heading"><div><h2>身份与权限</h2><p>当前账号、白名单权限和昵称映射；昵称与权限互不影响。</p></div><span class="status-chip good">随场控运行</span></div>
       <div class="remote-grid">
         <section class="panel">
           <header><h2>当前登录账号</h2></header>
-          <p class="hint">从其他设备发送一条弹幕后，在右侧最近发言用户中选择该账号。</p>
+          <p class="hint">从其他设备发送一条弹幕后，在右侧最近发言用户中选择该账号。备注昵称会作为弹幕称呼。</p>
           <div class="field"><label>账号 UID</label><input v-model="chatControl.owner_uid" type="text" placeholder="尚未设置" /></div>
-          <div class="field"><label>备注昵称</label><input v-model="chatControl.owner_nick" type="text" placeholder="用于界面识别" /></div>
+          <div class="field"><label>备注昵称</label><input v-model="chatControl.owner_nick" type="text" placeholder="用于界面识别与弹幕称呼" /></div>
           <span class="status-chip" :class="{ good: chatControl.owner_uid }">{{ chatControl.owner_uid ? "已设置" : "待设置" }}</span>
         </section>
         <section class="panel">
@@ -491,16 +524,34 @@ function formatTime(value) {
           <div v-if="!chatState.recent_speakers?.length" class="empty-state">启动场控并等待弹幕后，这里会出现 UID 和昵称。</div>
           <div v-else class="speaker-list">
             <div v-for="speaker in chatState.recent_speakers" :key="speaker.uid" class="speaker-row">
-              <div><strong>{{ speaker.nick || "未知昵称" }}</strong><span>UID {{ speaker.uid }} · {{ formatTime(speaker.last_seen) }}</span></div>
-              <div class="row-actions"><button type="button" @click="setOwner(speaker)">设为当前账号</button><button type="button" @click="addWhitelist(speaker)">加入白名单</button></div>
+              <div><strong>{{ speaker.display_nick || speaker.nick || "未知昵称" }}<em v-if="speaker.display_nick && speaker.display_nick !== speaker.nick" class="real-nick">（{{ speaker.nick }}）</em></strong><span>UID {{ speaker.uid }} · {{ formatTime(speaker.last_seen) }}</span></div>
+              <div class="row-actions"><button type="button" @click="setOwner(speaker)">设为当前账号</button><button type="button" @click="addWhitelist(speaker)">加入白名单</button><button type="button" @click="addNickOverride(speaker)">设称呼</button></div>
             </div>
           </div>
         </section>
       </div>
 
       <section class="panel">
-        <header><h2>白名单与预留权限</h2><button type="button" class="small-button" @click="addWhitelist()">手工添加</button></header>
-        <p class="hint">勾选白名单成员可以通过 LU 指令控制的模块；“感谢”只会调整该成员有权限的感谢模块。</p>
+        <header><h2>昵称映射</h2><button type="button" class="small-button" @click="addNickOverride()">手工添加</button></header>
+        <p class="hint">弹幕里的称呼以这里为准：命中 UID 且启用时，欢迎和感谢弹幕用自定义昵称代替实时昵称；模板里可用 {"{real_nick}"} 取原昵称。</p>
+        <div v-if="!nickOverrides.length" class="empty-state">暂无映射。所有人使用实时昵称。</div>
+        <div v-else class="whitelist-list">
+          <article v-for="(item, index) in nickOverrides" :key="`${item.uid}-${index}`" class="whitelist-card">
+            <div class="whitelist-main">
+              <label class="check"><input v-model="item.enabled" type="checkbox" />启用</label>
+              <input v-model="item.uid" type="text" placeholder="UID" />
+              <input v-model="item.alias" type="text" placeholder="自定义昵称（弹幕中显示）" />
+              <input v-model="item.note" type="text" placeholder="备注（仅界面显示）" />
+              <button type="button" class="danger-link" @click="removeNickOverride(index)">移除</button>
+            </div>
+          </article>
+        </div>
+        <div class="actions"><button type="button" class="primary" :disabled="!!busy" @click="onSaveNickOverrides">{{ busy === "nick-save" ? "保存中…" : "保存昵称映射" }}</button></div>
+      </section>
+
+      <section class="panel">
+        <header><h2>白名单与权限</h2><button type="button" class="small-button" @click="addWhitelist()">手工添加</button></header>
+        <p class="hint">勾选白名单成员可以通过 LU 指令控制的模块；“感谢”只会调整该成员有权限的感谢模块。白名单与昵称映射互不影响。</p>
         <div v-if="!chatControl.whitelist.length" class="empty-state">白名单为空，普通观众不会触发任何功能。</div>
         <div v-else class="whitelist-list">
           <article v-for="(item, index) in chatControl.whitelist" :key="`${item.uid}-${index}`" class="whitelist-card">
@@ -517,6 +568,25 @@ function formatTime(value) {
           </article>
         </div>
         <div class="actions"><button type="button" class="primary" :disabled="!!busy" @click="onSave">保存白名单</button></div>
+      </section>
+
+      <section class="panel command-panel">
+        <header>
+          <h2>LU 场控指令速查</h2>
+          <button type="button" class="small-button" @click="commandPanelOpen = !commandPanelOpen">{{ commandPanelOpen ? "收起" : "展开" }}</button>
+        </header>
+        <div v-if="commandPanelOpen">
+          <div class="command-grid">
+            <code>LU 开启 发送</code><code>LU 关闭 发送</code>
+            <code>LU 开启 欢迎</code><code>LU 关闭 欢迎</code>
+            <code>LU 开启 感谢</code><code>LU 关闭 感谢</code>
+            <code>LU 轮播 开始</code><code>LU 轮播 暂停</code>
+            <code>LU 轮播 继续</code><code>LU 轮播 停止</code>
+            <code>LU 轮播 下一条</code><code>LU 轮播 状态</code>
+          </div>
+          <p class="hint command-hint">LU 不区分大小写，空格可以省略。“感谢”同时控制礼物、守护、超粉和贵族感谢。关闭“发送”会立即清空尚未发送的队列，轮播也会暂停。轮播指令需要在白名单里单独勾选“允许控制轮播”。</p>
+        </div>
+        <p v-else class="hint">LU 不区分大小写，空格可以省略；点击“展开”查看全部指令。</p>
       </section>
     </section>
 
@@ -586,7 +656,7 @@ function formatTime(value) {
           <div v-for="(record, index) in chatState.records" :key="`${record.time}-${index}`" class="record-row">
             <time>{{ formatTime(record.time) }}</time>
             <span class="record-kind">{{ record.role === "owner" ? "当前账号" : "白名单" }}</span>
-            <strong>{{ record.nick }}</strong>
+            <strong>{{ record.display_nick || record.nick }}<em v-if="record.display_nick && record.display_nick !== record.nick" class="real-nick">（{{ record.nick }}）</em></strong>
             <span>{{ record.content }}</span>
           </div>
         </div>

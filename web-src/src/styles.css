@@ -213,3 +213,4 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .novel-row span { color: #748094; font-size: 0.82rem; }
 .novel-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; }
 .novel-preview { margin-top: 10px; padding: 9px 11px; border-radius: 8px; background: #f6f8fb; word-break: break-all; line-height: 1.7; }
+.real-nick { color: #748094; font-size: 0.82rem; font-style: normal; font-weight: normal; }

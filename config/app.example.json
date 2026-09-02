@@ -22,13 +22,16 @@
     "enabled": false,
     "min_noble_level": 2,
     "min_consume_level": 0,
-    "template": "欢迎{guard_prefix|noble_prefix}{nick}哥进入直播间~"
+    "template": "欢迎{guard_prefix|noble_prefix}{nick}哥进入直播间~",
+    "cooldown_ms": 300000
   },
   "gift_thank": {
     "enabled": false,
     "min_value_fen": 600,
     "min_unit_value_fen": 0,
-    "template": "感谢{nick}送的{count}个{item_name}"
+    "template": "感谢{nick}送的{count}个{item_name}",
+    "merge_quiet_ms": 3000,
+    "merge_max_ms": 8000
   },
   "guard_thank": {
     "enabled": false,

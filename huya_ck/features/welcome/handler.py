@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+import time
+
 from huya_ck.features.danmaku.handler import Danmaku
 from huya_ck.features.template import nick_values, render
 from huya_ck.log import get_logger
@@ -63,6 +66,41 @@ def _passes_thresholds(event: dict, config: dict) -> bool:
     return True
 
 
+_lock = threading.Lock()
+_last_welcomed: dict[str, float] = {}  # uid -> 上次决定欢迎的 monotonic 时间
+_clock = time.monotonic  # 可注入，测试用
+
+
+def reset() -> None:
+    """清空冷却表。停止挂房或更换房间时调用；TAF 重挂房不清。"""
+    with _lock:
+        _last_welcomed.clear()
+
+
+def _cooldown_block(event: dict, config: dict, nick) -> bool:
+    """冷却内返回 True。达标但无法冷却（无 uid / 冷却关闭）返回 False。"""
+    cooldown_ms = int(config.get("cooldown_ms") or 0)
+    if cooldown_ms <= 0:
+        return False
+    uid = str(event.get("uid") or "")
+    if not uid:
+        return False
+    now = _clock()
+    with _lock:
+        last = _last_welcomed.get(uid)
+        if last is not None and now - last < cooldown_ms / 1000:
+            remaining = cooldown_ms / 1000 - (now - last)
+            log.info(
+                "welcome 冷却中，忽略 %s（uid=%s，剩余约 %.0f 秒）",
+                nick,
+                uid,
+                remaining,
+            )
+            return True
+        _last_welcomed[uid] = now
+    return False
+
+
 def consider(event: dict, config: dict, danmaku: Danmaku) -> None:
     if event.get("type") != "enter":
         return
@@ -76,6 +114,8 @@ def consider(event: dict, config: dict, danmaku: Danmaku) -> None:
         log.info("welcome 贵族/消费达标，欢迎 %s", nick)
     else:
         log.info("welcome 贵族/消费不够且无守护，忽略 %s（%s / 消费%s）", nick, event.get("noble_name"), event.get("consume_level"))
+        return
+    if _cooldown_block(event, config, nick):
         return
     text = _fill(str(config.get("template") or ""), event)
     danmaku.submit(

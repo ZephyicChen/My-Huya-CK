@@ -22,18 +22,19 @@ def _fill(template: str, event: dict) -> str:
 
 
 def consider(event: dict, config: dict, danmaku: Danmaku) -> None:
-    if event.get("type") != "gift":
-        return
+    # 委托给连击合并器：关闭合并（merge_quiet_ms=0）或无法构成合并键时，
+    # merger 内部回退到 _consider_direct 单包立刻判断。
+    from huya_ck.features.gift_thank.merger import merger
+
+    merger.consider(event, config, danmaku)
+
+
+def _consider_direct(event: dict, config: dict, danmaku: Danmaku) -> None:
+    """单包立刻判断（关闭合并时的现行逻辑）。"""
     nick = event.get("sender_nick") or "?"
     name = event.get("item_name") or "?"
     fen = int(event.get("value_fen") or 0)
     count = max(1, int(event.get("count") or 1))
-    if not config.get("enabled"):
-        log.info("gift_thank 关闭，忽略 %s %s", nick, name)
-        return
-    if fen <= 0:
-        log.info("gift_thank 0 元，忽略 %s %s", nick, name)
-        return
     min_fen = int(config.get("min_value_fen") or 0)
     if fen < min_fen:
         log.info("gift_thank 低于门槛 %s<%s，忽略 %s %s", fen, min_fen, nick, name)

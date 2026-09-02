@@ -5,6 +5,7 @@ DEFAULT = {
     "min_noble_level": 2,
     "min_consume_level": 0,
     "template": "欢迎{guard_prefix|noble_prefix}{nick}哥进入直播间~",
+    "cooldown_ms": 300000,
 }
 
 FIELDS = [
@@ -28,6 +29,15 @@ FIELDS = [
         "hint": "0 表示不限制。",
         "min": 0,
         "placeholder": "不限制",
+    },
+    {
+        "key": "cooldown_ms",
+        "label": "同一人几分钟内不重复欢迎",
+        "type": "seconds",
+        "hint": "0 表示每次进场都欢迎。从决定欢迎时起算，不等发送成功。",
+        "min": 0,
+        "step": 0.5,
+        "placeholder": "5 分钟",
     },
     {
         "key": "template",

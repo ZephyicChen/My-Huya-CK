@@ -13,7 +13,9 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 
 from huya_ck.features.danmaku.handler import danmaku
+from huya_ck.features.gift_thank.merger import merger
 from huya_ck.features.novel.player import novel_player
+from huya_ck.features.welcome import handler as welcome_handler
 from huya_ck.log import get_logger
 from huya_ck.platform.channel import channel_state
 from huya_ck.platform.chat_state import chat_state
@@ -135,6 +137,8 @@ class RoomSupervisor:
                     await self._cancel_run_tasks()
                     danmaku.clear()
                     novel_player.pause(reason="已停止挂房")
+                    welcome_handler.reset()
+                    merger.reset(reason="停止挂房")
                     channel_state.reset()
                     chat_state.reset_connection()
                     pw, context = await self._close(pw, context)
@@ -178,6 +182,9 @@ class RoomSupervisor:
                     log.info("进入直播间 %s", url)
                     channel_state.reset()
                     chat_state.reset_connection()
+                    # 换房间：冷却表与未结算连击窗口属于上一场，全部清空
+                    welcome_handler.reset()
+                    merger.reset(reason="更换房间")
                     page = await self._open_room(context, url)
                     log.info("直播间已挂上（%s），持续监听弹幕、进场、礼物和开通", "后台无窗口" if want_headless else "有窗口")
                     if want_headless:
@@ -230,12 +237,16 @@ class RoomSupervisor:
                 pass
 
     async def _sender_loop(self, page) -> None:
-        """发送队列与轮播 tick。空闲时等待唤醒事件；CD 未到时短暂等待。"""
+        """发送队列、轮播 tick 与礼物连击结算。空闲时等待唤醒事件；CD 未到时短暂等待。"""
         while True:
             await danmaku.pump(page)
             novel_player.tick()
+            merger.tick()
             if danmaku.has_queued():
                 # 队列有货但 CD 未到：保持原 200ms 节奏，不空转
+                await asyncio.sleep(0.2)
+            elif merger.busy():
+                # 有未结算连击窗口：别睡满 1 秒，避免 3 秒静默被拖成 4 秒
                 await asyncio.sleep(0.2)
             else:
                 await danmaku.wait_work(SEND_IDLE_SLEEP_SECONDS)

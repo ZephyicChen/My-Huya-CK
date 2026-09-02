@@ -1,18 +1,33 @@
 ﻿import unittest
 
 from huya_ck.features.gift_thank.handler import consider as consider_gift
+from huya_ck.features.gift_thank.merger import GiftMerger
 from huya_ck.features.guard_thank.handler import consider as consider_guard
 from huya_ck.features.noble_thank.handler import consider as consider_noble
 from huya_ck.features.superfan_thank.handler import consider as consider_superfan
+from huya_ck.features.welcome import handler as welcome_handler
 from huya_ck.features.welcome.handler import consider as consider_welcome
 
 
 class FakeDanmaku:
     def __init__(self) -> None:
         self.sent: list[str] = []
+        self.submits: list[dict] = []
 
-    def submit(self, text: str, *, source: str, event_id: str, reason: str) -> None:
+    def submit(self, text: str, *, source: str, event_id: str, reason: str, **kwargs) -> None:
         self.sent.append(text)
+        self.submits.append({"text": text, "source": source, "event_id": event_id, "reason": reason})
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
 
 
 def enter_event(**overrides):
@@ -29,6 +44,31 @@ def enter_event(**overrides):
     }
     event.update(overrides)
     return event
+
+
+def gift_event(**overrides):
+    event = {
+        "type": "gift",
+        "sender_uid": "2002",
+        "sender_nick": "乙",
+        "item_id": "123",
+        "item_name": "火箭",
+        "count": 1,
+        "value_fen": 500,
+        "event_id": "e1",
+    }
+    event.update(overrides)
+    return event
+
+
+MERGE_CONFIG = {
+    "enabled": True,
+    "min_value_fen": 600,
+    "min_unit_value_fen": 0,
+    "template": "感谢{nick}送的{count}个{item_name}",
+    "merge_quiet_ms": 3000,
+    "merge_max_ms": 8000,
+}
 
 
 class FeatureTest(unittest.TestCase):
@@ -227,3 +267,157 @@ class FeatureTest(unittest.TestCase):
             danmaku.sent,
             ["感谢甲为主播开通/升级骑士1个月!", "感谢乙为主播续费剑士3个月!"],
         )
+
+
+class WelcomeCooldownTest(unittest.TestCase):
+    def setUp(self) -> None:
+        welcome_handler.reset()
+        self.clock = FakeClock()
+        self._orig_clock = welcome_handler._clock
+        welcome_handler._clock = self.clock
+        self.addCleanup(setattr, welcome_handler, "_clock", self._orig_clock)
+        self.danmaku = FakeDanmaku()
+        self.cfg = {
+            "enabled": True,
+            "min_noble_level": 2,
+            "min_consume_level": 0,
+            "template": "欢迎{nick}哥进入直播间~",
+            "cooldown_ms": 30000,
+        }
+
+    def test_cooldown_blocks_second_visit(self) -> None:
+        consider_welcome(enter_event(uid="1001", event_id="a"), self.cfg, self.danmaku)
+        consider_welcome(enter_event(uid="1001", event_id="b"), self.cfg, self.danmaku)
+        self.assertEqual(self.danmaku.sent, ["欢迎甲哥进入直播间~"])
+
+    def test_cooldown_expires(self) -> None:
+        consider_welcome(enter_event(uid="1001", event_id="a"), self.cfg, self.danmaku)
+        self.clock.advance(31)
+        consider_welcome(enter_event(uid="1001", event_id="b"), self.cfg, self.danmaku)
+        self.assertEqual(self.danmaku.sent, ["欢迎甲哥进入直播间~", "欢迎甲哥进入直播间~"])
+
+    def test_zero_cooldown_welcomes_every_visit(self) -> None:
+        cfg = dict(self.cfg, cooldown_ms=0)
+        consider_welcome(enter_event(uid="1001", event_id="a"), cfg, self.danmaku)
+        consider_welcome(enter_event(uid="1001", event_id="b"), cfg, self.danmaku)
+        self.assertEqual(len(self.danmaku.sent), 2)
+
+    def test_different_uids_independent(self) -> None:
+        consider_welcome(enter_event(uid="1001", event_id="a"), self.cfg, self.danmaku)
+        consider_welcome(enter_event(uid="1002", nick="丙", event_id="b"), self.cfg, self.danmaku)
+        self.assertEqual(self.danmaku.sent, ["欢迎甲哥进入直播间~", "欢迎丙哥进入直播间~"])
+
+    def test_no_uid_skips_cooldown(self) -> None:
+        consider_welcome(enter_event(event_id="a"), self.cfg, self.danmaku)
+        consider_welcome(enter_event(event_id="b"), self.cfg, self.danmaku)
+        self.assertEqual(len(self.danmaku.sent), 2)
+
+    def test_guard_bypasses_thresholds_but_not_cooldown(self) -> None:
+        cfg = dict(self.cfg, min_noble_level=4, min_consume_level=30)
+        event = enter_event(
+            uid="1001",
+            noble_level=None,
+            noble_name="",
+            consume_level=None,
+            has_guard=True,
+            guard_text="超级守护坐骑",
+        )
+        consider_welcome(event, cfg, self.danmaku)
+        consider_welcome(event, cfg, self.danmaku)
+        self.assertEqual(self.danmaku.sent, ["欢迎甲哥进入直播间~"])
+
+    def test_below_threshold_does_not_start_cooldown(self) -> None:
+        cfg = dict(self.cfg, min_noble_level=4)
+        consider_welcome(enter_event(uid="1001", event_id="a"), cfg, self.danmaku)
+        consider_welcome(enter_event(uid="1001", event_id="b"), self.cfg, self.danmaku)
+        self.assertEqual(self.danmaku.sent, ["欢迎甲哥进入直播间~"])
+
+
+class GiftMergeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.clock = FakeClock()
+        self.merger = GiftMerger(clock=self.clock)
+        self.danmaku = FakeDanmaku()
+
+    def consider(self, **overrides) -> None:
+        self.merger.consider(gift_event(**overrides), MERGE_CONFIG, self.danmaku)
+
+    def tick(self, config=None) -> None:
+        self.merger.tick(config=config if config is not None else MERGE_CONFIG, send_enabled=True)
+
+    def test_combo_merges_within_quiet(self) -> None:
+        self.consider(event_id="e1")
+        self.clock.advance(1)
+        self.consider(event_id="e2", count=2, value_fen=1000)
+        self.assertEqual(self.danmaku.sent, [])
+        self.clock.advance(3.1)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, ["感谢乙送的3个火箭"])
+        self.assertEqual(self.danmaku.submits[0]["event_id"], "merge:2002:123:e1")
+
+    def test_different_item_or_uid_not_merged(self) -> None:
+        self.consider(event_id="e1")
+        self.clock.advance(0.5)
+        self.consider(event_id="e2", item_id="999", item_name="飞机")
+        self.clock.advance(0.5)
+        self.consider(event_id="e3", sender_uid="2003", sender_nick="丁")
+        self.clock.advance(3.5)
+        self.tick()
+        self.assertEqual(len(self.danmaku.sent), 0)  # 各窗口单独都低于门槛
+
+    def test_combined_passes_threshold(self) -> None:
+        self.consider(event_id="e1", value_fen=300)
+        self.clock.advance(1)
+        self.consider(event_id="e2", value_fen=400)
+        self.clock.advance(3.1)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, ["感谢乙送的2个火箭"])
+
+    def test_combined_below_threshold_dropped(self) -> None:
+        self.consider(event_id="e1", value_fen=100)
+        self.clock.advance(1)
+        self.consider(event_id="e2", value_fen=200)
+        self.clock.advance(3.1)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, [])
+
+    def test_zero_value_not_queued(self) -> None:
+        self.consider(event_id="e1", value_fen=0)
+        self.clock.advance(5)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, [])
+        self.assertFalse(self.merger.busy())
+
+    def test_quiet_zero_disables_merge(self) -> None:
+        config = dict(MERGE_CONFIG, merge_quiet_ms=0)
+        self.merger.consider(gift_event(event_id="e1", value_fen=700), config, self.danmaku)
+        self.merger.consider(gift_event(event_id="e2", value_fen=700), config, self.danmaku)
+        self.assertEqual(len(self.danmaku.sent), 2)
+
+    def test_max_wait_forces_settlement(self) -> None:
+        self.consider(event_id="e1", value_fen=700)
+        for i in range(1, 8):
+            self.clock.advance(1)
+            self.consider(event_id=f"e{i+1}", value_fen=700)
+        # 静默一直没到 3 秒，但窗口已满 8 秒：强制结算
+        self.clock.advance(1)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, ["感谢乙送的8个火箭"])
+        # 之后的包开新窗口
+        self.consider(event_id="e9", value_fen=700)
+        self.assertEqual(len(self.danmaku.sent), 1)
+
+    def test_reset_drops_windows(self) -> None:
+        self.consider(event_id="e1", value_fen=700)
+        self.merger.reset(reason="测试")
+        self.clock.advance(5)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, [])
+
+    def test_tick_drops_windows_when_disabled(self) -> None:
+        self.consider(event_id="e1", value_fen=700)
+        self.merger.tick(config=dict(MERGE_CONFIG, enabled=False), send_enabled=True)
+        self.assertFalse(self.merger.busy())
+        self.clock.advance(5)
+        self.tick()
+        self.assertEqual(self.danmaku.sent, [])

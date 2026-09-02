@@ -107,6 +107,16 @@ def feature_config(feature_id: str, doc: dict | None = None) -> dict:
     return _deep_merge(defaults, current)
 
 
+def _drop_gift_merger_windows(reason: str) -> None:
+    """关闭发送或礼物感谢时丢弃未结算的连击窗口，不补发。
+
+    延迟导入避免 config_store -> merger -> config_store 循环。
+    """
+    from huya_ck.features.gift_thank.merger import merger
+
+    merger.reset(reason=reason)
+
+
 def put_feature(feature_id: str, patch: dict, path: Path | None = None) -> dict:
     if feature_id not in feature_defaults():
         raise KeyError(feature_id)
@@ -115,6 +125,8 @@ def put_feature(feature_id: str, patch: dict, path: Path | None = None) -> dict:
         current = feature_config(feature_id, doc)
         doc[feature_id] = _deep_merge(current, patch)
         saved = save(doc, path)
+        if feature_id in ("gift_thank", "danmaku") and patch.get("enabled") is False:
+            _drop_gift_merger_windows("WebUI 关闭发送/感谢")
         return feature_config(feature_id, saved)
 
 
@@ -132,6 +144,8 @@ def set_features_enabled(feature_ids: list[str] | tuple[str, ...], enabled: bool
             doc[feature_id] = current
             changed[feature_id] = current
         save(doc, path)
+        if not enabled and set(feature_ids) & {"gift_thank", "danmaku"}:
+            _drop_gift_merger_windows("关闭发送/感谢")
         return changed
 
 

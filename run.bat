@@ -77,18 +77,21 @@ if errorlevel 1 (
 )
 echo [env] Python not found. Installing Python 3.12 via winget ^(this runs once^)...
 winget install -e --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
+rem dir 不支持路径中间的目录名带通配符（Python3*\python.exe 匹配不到
+rem 任何文件），必须从父目录用 /s 递归列出完整路径；逐个候选做版本检查
 set "HOST_PY="
-for /f "delims=" %%i in ('dir /b /o-n "%LOCALAPPDATA%\Programs\Python\Python3*\python.exe" 2^>nul') do (
-    if not defined HOST_PY set "HOST_PY=%%i"
-)
+for /f "delims=" %%i in ('dir /b /s /o-n "%LOCALAPPDATA%\Programs\Python\python.exe" 2^>nul') do call :pick_host_py "%%i"
 if not defined HOST_PY (
-    echo [env] winget install finished but python.exe was not found.
+    echo [env] winget install finished but no usable Python 3.10+ was found.
     echo [env] Install Python 3.10+ manually, reopen this window, and retry.
     exit /b 1
 )
-"%HOST_PY%" -c "%PY_MIN_CHECK%" 2>nul
-if errorlevel 1 (
-    echo [env] Installed Python is older than 3.10.
-    exit /b 1
-)
+exit /b 0
+
+rem %1 = full path to python.exe; keep the first candidate that is 3.10+
+:pick_host_py
+if defined HOST_PY exit /b 0
+"%~1" -c "%PY_MIN_CHECK%" 2>nul
+if errorlevel 1 exit /b 0
+set "HOST_PY=""%~1"""
 exit /b 0

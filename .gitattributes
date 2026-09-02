@@ -1,0 +1,5 @@
+# 批处理必须是 CRLF 才能被 cmd.exe 正确解析。
+# -text 表示按字节原样存储，禁止 autocrlf/eol 任何转换，
+# 保证仓库、克隆、GitHub zip 三处的换行符完全一致。
+*.bat -text
+*.cmd -text
